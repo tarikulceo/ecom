@@ -3,8 +3,10 @@
 namespace App\Addons\Multivendor\Http\Controllers\Seller;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\SellerPayout;
+use App\Models\ClubPoint;
+use Illuminate\Http\Request;
+use Auth;
 
 class SellerPayoutController extends Controller
 {
@@ -38,8 +40,11 @@ class SellerPayoutController extends Controller
 
     public function payout_requests()
     {
-        $payout_requests = SellerPayout::where('shop_id', auth()->user()->shop_id)->where('status','requested')->latest()->paginate(15);
-        return view('addon:multivendor::seller.earnings.payout_requests', compact('payout_requests'));
+        $shop_id = Auth::user()->shop_id;
+        $payout_requests = SellerPayout::where('shop_id', $shop_id)->latest()->paginate(15);
+        $club_points = ClubPoint::where('user_id', Auth::id())->latest()->paginate(15);
+
+        return view('addon:multivendor::seller.earnings.payout_requests', compact('payout_requests', 'club_points'));
     }
 
 

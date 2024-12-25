@@ -20,6 +20,7 @@ use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\LanguageController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\ProductController;
+#use App\Http\Controllers\ClubPointController;
 
 /*
 |--------------------------------------------------------------------------
@@ -147,6 +148,8 @@ Route::group([
 
      // notification
      Route::get('all-notifications', [NotificationController::class, 'all_notifications'])->name('notification.list');
+
+     /*Route::post('convert-point-into-wallet', [ClubPointController::class, 'convertPointIntoWallet'])->name('convert.point.into.wallet');*/
 });
 
 Route::group([

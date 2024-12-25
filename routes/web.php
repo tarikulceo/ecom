@@ -17,6 +17,7 @@ use App\Http\Controllers\Payment\RazorpayPaymentController;
 use App\Http\Controllers\Payment\SSLCommerzPaymentController;
 use App\Http\Controllers\Payment\StripePaymentController;
 use App\Http\Controllers\SSLCommerz;
+use App\Http\Controllers\ClubPointController;
 
 /*
 |--------------------------------------------------------------------------
@@ -97,6 +98,10 @@ Route::group(['prefix' => 'payment'], function () {
 
     //Iyzico
     Route::any('/iyzico/payment/callback/{payment_type}/{amount?}/{payment_method?}/{combined_order_id?}/{customer_package_id?}/{seller_package_id?}', [IyzicoController::class, 'callback'])->name('iyzico.callback');
+});
+
+Route::middleware(['auth'])->group(function () {
+    Route::post('convert-point-into-wallet', [ClubPointController::class, 'convertPointIntoWallet'])->name('convert.point.into.wallet');
 });
 
 Route::any('/social-login/redirect/{provider}', [LoginController::class, 'redirectToProvider'])->name('social.login');

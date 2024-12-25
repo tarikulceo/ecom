@@ -73,6 +73,55 @@
         </div>
     </div>
 
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5 class="mb-0 h6">{{ translate('Point Earning History') }}</h5>
+        </div>
+        <div class="card-body">
+            <table class="table aiz-table mb-0">
+                <thead>
+                    <tr>
+                        <th>{{ translate('Order Code') }}</th>
+                        <th>{{ translate('Points') }}</th>
+                        <th>{{ translate('Converted') }}</th>
+                        <th>{{ translate('Date') }}</th>
+                        <th>{{ translate('Action') }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach ($club_points as $club_point)
+                        <tr>
+                            <td>{{ $club_point->order_code }}</td>
+                            <td>{{ $club_point->points }}</td>
+                            <td>
+                                @if ($club_point->convert_status == 1)
+                                    <span class="badge badge-success">{{ translate('Yes') }}</span>
+                                @else
+                                    <span class="badge badge-danger">{{ translate('No') }}</span>
+                                @endif
+                            </td>
+                            <td>{{ date('d-m-Y', strtotime($club_point->created_at)) }}</td>
+                            <td>
+                                @if ($club_point->convert_status == 0)
+                                    <form action="{{ route('convert.point.into.wallet') }}" method="POST">
+                                        @csrf
+                                        <input type="hidden" name="id" value="{{ $club_point->id }}">
+                                        <button type="submit" class="btn btn-warning btn-sm">{{ translate('Convert Now') }}</button>
+                                    </form>
+                                @else
+                                    <span class="badge badge-success">{{ translate('Done') }}</span>
+                                @endif
+                            </td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+            <div class="aiz-pagination">
+                {{ $club_points->links() }}
+            </div>
+        </div>
+    </div>
+
 @endsection
 
 @section('modal')

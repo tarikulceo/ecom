@@ -2,6 +2,7 @@
     @php
         $subtotal = 0;
         $tax = 0;
+        $total_points = 0;
     @endphp
     @if (Session::has('pos.cart'))
         <ul class="list-group list-group-flush">
@@ -10,6 +11,7 @@
                 $subtotal += $cartItem['price']*$cartItem['quantity'];
                 $tax += $cartItem['tax']*$cartItem['quantity'];
                 $product_variation = \App\Models\ProductVariation::find($cartItem['variation_id']);
+                $total_points += $product_variation->product->earn_point * $cartItem['quantity'];
             @endphp
             <li class="list-group-item py-3 px-0">
                 <div class="row gutters-15 align-items-center">
@@ -31,6 +33,7 @@
                     <div class="col-auto">
                         <div class="fs-12 opacity-60 mb-1">{{ single_price($cartItem['price']) }} x {{ $cartItem['quantity'] }}</div>
                         <div class="fs-15 fw-600">{{ single_price($cartItem['price']*$cartItem['quantity']) }}</div>
+                        <div class="fs-12 opacity-60">{{ translate('Earn Points:') }} {{ $product_variation->product->earn_point * $cartItem['quantity'] }}</div>
                     </div>
                     <div class="col-auto">
                         <button type="button" class="btn btn-circle btn-icon btn-sm btn-soft-danger ml-2 mr-0" onclick="removeFromCart({{ $key }})">
@@ -71,6 +74,10 @@
     <div class="d-flex justify-content-between fw-600 mb-2 opacity-70">
         <span>{{translate('Discount')}}</span>
         <span>{{ single_price(Session::get('pos.discount', 0)) }}</span>
+    </div>
+    <div class="d-flex justify-content-between fw-600 mb-2 opacity-70">
+        <span>{{translate('Total Points')}}</span>
+        <span>{{ $total_points }}</span>
     </div>
     <div class="d-flex justify-content-between fw-600 fs-18 border-top py-3">
         <span>{{translate('Total')}}</span>

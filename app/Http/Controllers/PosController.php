@@ -17,6 +17,7 @@ use App\Models\ProductVariation;
 use App\Models\ProductVariationCombination;
 use App\Models\Shop;
 use App\Models\State;
+use App\Models\ClubPoint;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Utility\CategoryUtility;
@@ -39,27 +40,28 @@ class PosController extends Controller
     }
 
     public function index()
-    {
-        $customers = User::where('user_type', 'customer')->orderBy('created_at', 'desc')->get();
+{
+    $customers = User::where('user_type', 'customer')->orderBy('created_at', 'desc')->get();
+    $seller = Auth::user();
 
-        if (Auth::user()->user_type == 'admin' || Auth::user()->user_type == 'staff') {
-            return view('backend.pos.index', compact('customers'));
+    if (Auth::user()->user_type == 'admin' || Auth::user()->user_type == 'staff') {
+        return view('backend.pos.index', compact('customers', 'seller'));
+    } else {
+        if (get_setting('pos_activation_for_seller') == 1) {
+            return view('backend.pos.frontend.seller.pos.index', compact('customers', 'seller'));
         } else {
-            if (get_setting('pos_activation_for_seller') == 1) {
-                return view('backend.pos.frontend.seller.pos.index', compact('customers'));
-            } else {
-                flash(translate('POS is disabled for Sellers!!!'))->error();
-                return back();
-            }
+            flash(translate('POS is disabled for Sellers!!!'))->error();
+            return back();
         }
     }
+}
 
     public function search(Request $request)
     {
         $products = Product::with('variations')->leftJoin('product_variation_combinations', 'product_variation_combinations.product_id', '=', 'products.id')
             ->leftJoin('attribute_values', 'product_variation_combinations.attribute_value_id', '=', 'attribute_values.id')
             ->select('products.*', 'product_variation_combinations.id as product_variation_combination_id', 'attribute_values.name as attribute_value_name')
-            ->where('products.shop_id', Auth::user()->shop_id)
+            ->where('products.shop_id', 6)
             ->where('approved', '1')
             ->where('approved', 1)
             ->where('published', '1');
@@ -291,194 +293,284 @@ class PosController extends Controller
         }
     }
     //order place
-    public function order_store(Request $request)
-    {
 
-        if (Session::get('pos.shipping_info') == null || Session::get('pos.shipping_info')['name'] == null || Session::get('pos.shipping_info')['phone'] == null || Session::get('pos.shipping_info')['address'] == null) {
-            return array('success' => 0, 'message' => translate("Please Add Shipping Information."));
-        }
+public function order_store(Request $request)
+{
+    $user_id = Auth::user()->id; // Use the logged-in seller's ID
 
-        if (Session::has('pos.cart') && count(Session::get('pos.cart')) > 0) {
-
-            $shipping_info = Session::get('pos.shipping_info');
-            $data['name']           = $shipping_info['name'];
-            $data['email']          = $shipping_info['email'];
-            $data['address']        = $shipping_info['address'];
-            $data['country']        = $shipping_info['country'];
-            $data['city']           = $shipping_info['city'];
-            $data['state']           = $shipping_info['state'];
-            $data['postal_code']    = $shipping_info['postal_code'];
-            $data['phone']          = $shipping_info['phone'];
-
-            $combined_order = new CombinedOrder;
-
-            if ($request->user_id == null) {
-                $combined_order->guest_id    = mt_rand(100000, 999999);
-            } else {
-                $combined_order->user_id = $request->user_id;
-            }
-
-            $combined_order->code = date('Ymd-His') . rand(10, 99);
-            $combined_order->shipping_address = json_encode($data);
-            $combined_order->billing_address = json_encode($data);
-
-            $grand_total = 0;
-            $package_number = 1;
-            $user = User::find($request->user_id);
-            if ($combined_order->save()) {
-
-                $subtotal = 0;
-                $tax = 0;
-                $shop_id = Auth::user()->shop_id;
-                $order = Order::create([
-                    'user_id' => $request->user_id == null ? mt_rand(100000, 999999) :  $request->user_id,
-                    'shop_id' => $shop_id,
-                    'combined_order_id' => $combined_order->id,
-                    'code' => $package_number,
-                    'shipping_address' => $combined_order->shipping_address,
-                    'billing_address' => $combined_order->billing_address,
-                    'shipping_cost' => Session::get('pos.shipping', 0),
-                    'grand_total' => 0,
-                    'coupon_code' => null,
-                    'coupon_discount' => 0,
-                    'delivery_type' => 'standard',
-                    'payment_type' => $request->payment_type,
-                    'payment_status' => $request->payment_type != 'cash_on_delivery' ? 'paid' : 'unpaid',
-                ]);
-
-                foreach (Session::get('pos.cart') as $key => $cartItem) {
-                    $product_variation = ProductVariation::where('id', $cartItem['variation_id'])->first();
-
-                    $itemUnitPriceWithoutTax = variation_discounted_price($product_variation->product, $product_variation, false);
-                    $itemPriceWithoutTax = variation_discounted_price($product_variation->product, $product_variation, false) * $cartItem['quantity'];
-                    $itemTax = product_variation_tax($product_variation->product, $product_variation);
-                    $totalTax = product_variation_tax($product_variation->product, $product_variation) * $cartItem['quantity'];
-
-                    $subtotal += $itemPriceWithoutTax;
-                    $tax += $totalTax;
-
-                    $orderDetail = OrderDetail::create([
-                        'order_id' => $order->id,
-                        'product_id' => $product_variation->product->id,
-                        'product_variation_id' => $product_variation->id,
-                        'price' => $itemUnitPriceWithoutTax,
-                        'tax' => $itemTax,
-                        'total' => ($itemUnitPriceWithoutTax + $itemTax) * $cartItem['quantity'],
-                        'quantity' => $cartItem['quantity'],
-                    ]);
-
-                    $product_variation->product->update([
-                        'num_of_sale' => DB::raw('num_of_sale + ' . $cartItem['quantity'])
-                    ]);
-
-                    foreach ($orderDetail->product->categories as $category) {
-                        $category->sales_amount += $orderDetail->total;
-                        $category->save();
-                    }
-
-                    $brand = $orderDetail->product->brand;
-                    if ($brand) {
-                        $brand->sales_amount += $orderDetail->total;
-                        $brand->save();
-                    }
-                }
-
-                $grand_total = $subtotal + $tax + Session::get('pos.shipping', 0);
-
-                if (Session::has('pos.discount')) {
-                    $grand_total -= Session::get('pos.discount');
-                    $order->coupon_discount = Session::get('pos.discount');
-                }
-
-                $order->grand_total = $grand_total;
-                $combined_order->grand_total = $grand_total;
-                $combined_order->save();
-
-                // wallet 
-                if ($request->payment_type == 'wallet') {
-                    $user->balance -= $combined_order->grand_total;
-                    $user->save();
-
-                    $wallet = new Wallet();
-                    $wallet->user_id = $user->id;
-                    $wallet->amount = $combined_order->grand_total;
-                    $wallet->type = 'Deducted';
-                    $wallet->details = 'Order Placed. Order Code ' . $combined_order->code;
-                    $wallet->save();
-                }
-
-                $order_price = $order->grand_total - $order->shipping_cost - $order->orderDetails->sum(function ($t) {
-                    return $t->tax * $t->quantity;
-                });
-
-                $shop_commission = Shop::find($shop_id)->commission;
-                $admin_commission = 0.00;
-                $seller_earning = $subtotal;
-                if ($shop_commission > 0) {
-                    $admin_commission = ($shop_commission * $order_price) / 100;
-                    $seller_earning = $subtotal - $admin_commission;
-                }
-
-                $order->admin_commission = $admin_commission;
-                $order->seller_earning = $seller_earning;
-                $order->commission_percentage = $shop_commission;
-                $order->save();
-
-                OrderUpdate::create([
-                    'order_id' => $order->id,
-                    'user_id' => $request->user_id == null ? mt_rand(100000, 999999) :  $request->user_id,
-                    'note' => 'Order has been placed.',
-                ]);
-
-
-                $array['view'] = 'emails.invoice';
-                $array['subject'] = 'Your order has been placed - ' . $order->code;
-                $array['from'] = env('MAIL_USERNAME');
-                $array['order'] = $order;
-
-                $admin_products = array();
-                $seller_products = array();
-
-                foreach ($order->orderDetails as $key => $orderDetail) {
-                    if ($orderDetail->product->added_by == 'admin') {
-                        array_push($admin_products, $orderDetail->product->id);
-                    } else {
-                        $product_ids = array();
-                        if (array_key_exists($orderDetail->product->user_id, $seller_products)) {
-                            $product_ids = $seller_products[$orderDetail->product->user_id];
-                        }
-                        array_push($product_ids, $orderDetail->product->id);
-                        $seller_products[$orderDetail->product->user_id] = $product_ids;
-                    }
-                }
-
-                foreach ($seller_products as $key => $seller_product) {
-                    try {
-                        Mail::to(User::find($key)->email)->queue(new InvoiceEmailManager($array));
-                    } catch (\Exception $e) {
-                    }
-                }
-
-                //sends email to customer with the invoice pdf attached
-                if (env('MAIL_USERNAME') != null) {
-                    try {
-                        Mail::to($request->session()->get('pos.shipping_info')['email'])->queue(new InvoiceEmailManager($array));
-                        Mail::to(User::where('user_type', 'admin')->first()->email)->queue(new InvoiceEmailManager($array));
-                    } catch (\Exception $e) {
-                    }
-                }
-
-                Session::forget('pos.shipping_info');
-                Session::forget('pos.shipping');
-                Session::forget('pos.discount');
-                Session::forget('pos.cart');
-                return array('success' => 1, 'message' => translate('Order Completed Successfully.'));
-            } else {
-                return array('success' => 0, 'message' => translate('Please input customer information.'));
-            }
-        }
-        return array('success' => 0, 'message' => translate("Please select a product."));
+    if (Session::get('pos.shipping_info') == null || Session::get('pos.shipping_info')['name'] == null || Session::get('pos.shipping_info')['phone'] == null || Session::get('pos.shipping_info')['address'] == null) {
+        return array('success' => 0, 'message' => translate("Please Add Shipping Information."));
     }
+
+    if (Session::has('pos.cart') && count(Session::get('pos.cart')) > 0) {
+
+        $shipping_info = Session::get('pos.shipping_info');
+        $data['name']           = $shipping_info['name'];
+        $data['email']          = $shipping_info['email'];
+        $data['address']        = $shipping_info['address'];
+        $data['country']        = $shipping_info['country'];
+        $data['city']           = $shipping_info['city'];
+        $data['state']          = $shipping_info['state'];
+        $data['postal_code']    = $shipping_info['postal_code'];
+        $data['phone']          = $shipping_info['phone'];
+
+        $combined_order = new CombinedOrder;
+
+        $combined_order->user_id = $user_id;
+        $combined_order->code = date('Ymd-His') . rand(10, 99);
+        $combined_order->shipping_address = json_encode($data);
+        $combined_order->billing_address = json_encode($data);
+
+        $grand_total = 0;
+        $package_number = 1;
+        $user = User::find($user_id);
+        $club_points = 0; // Initialize club points
+
+        if ($combined_order->save()) {
+
+            $subtotal = 0;
+            $tax = 0;
+            $shop_id = Auth::user()->shop_id;
+            $order = Order::create([
+                'user_id' => $user_id,
+                'shop_id' => $shop_id,
+                'combined_order_id' => $combined_order->id,
+                'code' => $package_number,
+                'shipping_address' => $combined_order->shipping_address,
+                'billing_address' => $combined_order->billing_address,
+                'shipping_cost' => Session::get('pos.shipping', 0),
+                'grand_total' => 0,
+                'coupon_code' => null,
+                'coupon_discount' => 0,
+                'delivery_type' => 'standard',
+                'payment_type' => $request->payment_type,
+                'payment_status' => $request->payment_type != 'cash_on_delivery' ? 'paid' : 'unpaid',
+            ]);
+
+            foreach (Session::get('pos.cart') as $key => $cartItem) {
+                $product_variation = ProductVariation::where('id', $cartItem['variation_id'])->first();
+
+                $itemUnitPriceWithoutTax = variation_discounted_price($product_variation->product, $product_variation, false);
+                $itemPriceWithoutTax = variation_discounted_price($product_variation->product, $product_variation, false) * $cartItem['quantity'];
+                $itemTax = product_variation_tax($product_variation->product, $product_variation);
+                $totalTax = product_variation_tax($product_variation->product, $product_variation) * $cartItem['quantity'];
+
+                $subtotal += $itemPriceWithoutTax;
+                $tax += $totalTax;
+
+                $orderDetail = OrderDetail::create([
+                    'order_id' => $order->id,
+                    'product_id' => $product_variation->product->id,
+                    'product_variation_id' => $product_variation->id,
+                    'price' => $itemUnitPriceWithoutTax,
+                    'tax' => $itemTax,
+                    'total' => ($itemUnitPriceWithoutTax + $itemTax) * $cartItem['quantity'],
+                    'quantity' => $cartItem['quantity'],
+                ]);
+
+                $product_variation->product->update([
+                    'num_of_sale' => DB::raw('num_of_sale + ' . $cartItem['quantity'])
+                ]);
+
+                foreach ($orderDetail->product->categories as $category) {
+                    $category->sales_amount += $orderDetail->total;
+                    $category->save();
+                }
+
+                $brand = $orderDetail->product->brand;
+                if ($brand) {
+                    $brand->sales_amount += $orderDetail->total;
+                    $brand->save();
+                }
+
+                // Calculate club points
+                if (get_setting('club_point') == 1) {
+                    if ($product_variation->product->earn_point != null) {
+                        $club_points += $product_variation->product->earn_point * $cartItem['quantity'];
+                    }
+                }
+
+                // Check if the product already exists in the seller's shop by SKU
+                $existing_product_variation = ProductVariation::whereHas('product', function ($query) use ($shop_id) {
+                    $query->where('shop_id', $shop_id);
+                })->where('sku', $product_variation->sku)->first();
+
+                if ($existing_product_variation) {
+                    // Update the stock quantity
+                    $existing_product_variation->current_stock += $cartItem['quantity'];
+                    $existing_product_variation->save();
+                } else {
+                    // Duplicate the product and assign it to the seller's shop
+                    $this->duplicateProductForSeller($product_variation->product, $shop_id, $cartItem['quantity']);
+                }
+            }
+
+            $grand_total = $subtotal + $tax + Session::get('pos.shipping', 0);
+
+            if (Session::has('pos.discount')) {
+                $grand_total -= Session::get('pos.discount');
+                $order->coupon_discount = Session::get('pos.discount');
+            }
+
+            $order->grand_total = $grand_total;
+            $combined_order->grand_total = $grand_total;
+            $combined_order->save();
+
+            // wallet 
+            if ($request->payment_type == 'wallet') {
+                $user->balance -= $combined_order->grand_total;
+                $user->save();
+
+                $wallet = new Wallet();
+                $wallet->user_id = $user->id;
+                $wallet->amount = $combined_order->grand_total;
+                $wallet->type = 'Deducted';
+                $wallet->details = 'Order Placed. Order Code ' . $combined_order->code;
+                $wallet->save();
+            }
+
+            $order_price = $order->grand_total - $order->shipping_cost - $order->orderDetails->sum(function ($t) {
+                return $t->tax * $t->quantity;
+            });
+
+            $shop_commission = Shop::find($shop_id)->commission;
+            $admin_commission = 0.00;
+            $seller_earning = $subtotal;
+            if ($shop_commission > 0) {
+                $admin_commission = ($shop_commission * $order_price) / 100;
+                $seller_earning = $subtotal - $admin_commission;
+            }
+
+            $order->admin_commission = $admin_commission;
+            $order->seller_earning = $seller_earning;
+            $order->commission_percentage = $shop_commission;
+            $order->save();
+
+            OrderUpdate::create([
+                'order_id' => $order->id,
+                'user_id' => $user_id,
+                'note' => 'Order has been placed.',
+            ]);
+
+            // Add club points to the user
+            if ($club_points > 0) {
+                $club_point = new ClubPoint;
+                $club_point->user_id = $user_id;
+                $club_point->points = $club_points;
+                $club_point->combined_order_id = $order->id;
+                $club_point->convert_status = 0;
+                $club_point->save();
+            }
+
+            $array['view'] = 'emails.invoice';
+            $array['subject'] = 'Your order has been placed - ' . $order->code;
+            $array['from'] = env('MAIL_USERNAME');
+            $array['order'] = $order;
+
+            $admin_products = array();
+            $seller_products = array();
+
+            foreach ($order->orderDetails as $key => $orderDetail) {
+                if ($orderDetail->product->added_by == 'admin') {
+                    array_push($admin_products, $orderDetail->product->id);
+                } else {
+                    $product_ids = array();
+                    if (array_key_exists($orderDetail->product->user_id, $seller_products)) {
+                        $product_ids = $seller_products[$orderDetail->product->user_id];
+                    }
+                    array_push($product_ids, $orderDetail->product->id);
+                    $seller_products[$orderDetail->product->user_id] = $product_ids;
+                }
+            }
+
+            foreach ($seller_products as $key => $seller_product) {
+                try {
+                    Mail::to(User::find($key)->email)->queue(new InvoiceEmailManager($array));
+                } catch (\Exception $e) {
+                }
+            }
+
+            //sends email to customer with the invoice pdf attached
+            if (env('MAIL_USERNAME') != null) {
+                try {
+                    Mail::to($request->session()->get('pos.shipping_info')['email'])->queue(new InvoiceEmailManager($array));
+                    Mail::to(User::where('user_type', 'admin')->first()->email)->queue(new InvoiceEmailManager($array));
+                } catch (\Exception $e) {
+                }
+            }
+
+            Session::forget('pos.shipping_info');
+            Session::forget('pos.shipping');
+            Session::forget('pos.discount');
+            Session::forget('pos.cart');
+            return array('success' => 1, 'message' => translate('Order Completed Successfully.'));
+        } else {
+            return array('success' => 0, 'message' => translate('Please input customer information.'));
+        }
+    }
+    return array('success' => 0, 'message' => translate("Please select a product."));
+}
+
+private function duplicateProductForSeller($product, $shop_id, $quantity)
+{
+    $product_new = $product->replicate();
+    $product_new->shop_id = $shop_id;
+    $product_new->stock = $quantity;
+    $product_new->slug = Str::slug($product_new->name, '-') . '-' . strtolower(Str::random(5));
+
+    if ($product_new->save()) {
+        // Duplicate variations
+        foreach ($product->variations as $variation) {
+            $p_variation = $variation->replicate();
+            $p_variation->product_id = $product_new->id;
+            $p_variation->current_stock = $quantity;
+            $p_variation->save();
+
+            // Duplicate variation combinations
+            foreach ($variation->combinations as $combination) {
+                $p_variation_comb = $combination->replicate();
+                $p_variation_comb->product_id = $product_new->id;
+                $p_variation_comb->product_variation_id = $p_variation->id;
+                $p_variation_comb->save();
+            }
+        }
+
+        // Duplicate attributes
+        foreach ($product->attributes as $attribute) {
+            $p_attribute = $attribute->replicate();
+            $p_attribute->product_id = $product_new->id;
+            $p_attribute->save();
+        }
+
+        // Duplicate attribute values
+        foreach ($product->attribute_values as $attribute_value) {
+            $p_attr_value = $attribute_value->replicate();
+            $p_attr_value->product_id = $product_new->id;
+            $p_attr_value->save();
+        }
+
+        // Duplicate translations
+        foreach ($product->product_translations as $translation) {
+            $product_translation = $translation->replicate();
+            $product_translation->product_id = $product_new->id;
+            $product_translation->save();
+        }
+
+        // Duplicate categories
+        foreach ($product->product_categories as $category) {
+            $p_category = $category->replicate();
+            $p_category->product_id = $product_new->id;
+            $p_category->save();
+        }
+
+        // Duplicate taxes
+        foreach ($product->taxes as $tax) {
+            $p_tax = $tax->replicate();
+            $p_tax->product_id = $product_new->id;
+            $p_tax->save();
+        }
+    }
+}
 
     public function pos_activation()
     {

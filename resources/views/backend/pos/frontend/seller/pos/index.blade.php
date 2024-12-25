@@ -45,14 +45,14 @@
                         <div class="card-body">
                             <div class="d-flex border-bottom pb-3">
                                 <div class="flex-grow-1">
-                                    <select name="user_id" class="form-control aiz-selectpicker pos-customer" data-live-search="true" onchange="getShippingAddress()">
-                                        <option value="">{{translate('Walk In Customer')}}</option>
-                                        @foreach ($customers as $key => $customer)
-                                            <option value="{{ $customer->id }}" data-contact="{{ $customer->email }}">
-                                                {{ $customer->name }}
-                                            </option>
-                                        @endforeach
-                                    </select>
+                                <select name="user_id" class="form-control aiz-selectpicker pos-customer" data-live-search="true" onchange="getShippingAddress()">
+    <option value="{{ $seller->id }}" selected>{{ $seller->name }}</option>
+    @foreach ($customers as $key => $customer)
+        <option value="{{ $customer->id }}" data-contact="{{ $customer->email }}">
+            {{ $customer->name }}
+        </option>
+    @endforeach
+</select>
                                 </div>
                                 <button type="button" class="btn btn-icon btn-soft-dark ml-3 mr-0" data-target="#new-customer" data-toggle="modal">
                                     <i class="las la-truck"></i>
@@ -91,6 +91,7 @@
                                                         <span class="span badge badge-inline fs-12 badge-soft-secondary">{{ $cartItem['variant'] }}</span>
                                                     </div>
                                                     <div class="col-auto">
+                                                        <div class="fs-12 opacity-60 mb-1">{{ single_price($cartItem['price']) }} x {{ $cartItem['quantity'] }}</div>
                                                         <div class="fs-12 opacity-60 mb-1">{{ single_price($cartItem['price']) }} x {{ $cartItem['quantity'] }}</div>
                                                         <div class="fs-15 fw-600">{{ single_price($cartItem['price']*$cartItem['quantity']) }}</div>
                                                     </div>
@@ -307,7 +308,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary btn-base-3" data-dismiss="modal">{{translate('Close')}}</button>
-                    {{-- <button type="button" onclick="oflinePayment()" class="btn btn-base-1 btn-warning">{{translate('Offline Payment')}}</button> --}}
+                    <button type="button" onclick="oflinePayment()" class="btn btn-base-1 btn-warning">{{translate('Offline Payment')}}</button>
                     @php 
                     $wallet_active_check = false;
                     if (Session::get('pos.shipping_info')) {
@@ -451,7 +452,7 @@
             }
         }
 
-        function setProductList(data){
+        function setProductList(data) {
             for (var i = 0; i < data.data.length; i++) {
                 $('#product-list').append(
                     `<div class="w-140px w-xl-180px w-xxl-210px mr-2">
@@ -469,12 +470,14 @@
                             </div>
                             <div class="card-body p-2 p-xl-3">
                                 <div class="text-truncate fw-600 fs-14 mb-2">${data.data[i].name}</div>
+                                <div class="text-truncate fw-600 fs-14 mb-2">{{ translate('Points:') }} ${data.data[i].earn_point ? data.data[i].earn_point : 0}</div>
                                 <div class="">
                                     ${data.data[i].price != data.data[i].base_price
                                         ? `<del class="mr-2 ml-0">${data.data[i].base_price}</del><span>${data.data[i].price}</span>`
                                         : `<span>${data.data[i].base_price}</span>`
                                     }
                                 </div>
+                           
                             </div>
                             <div class="add-plus absolute-full rounded overflow-hidden hov-box ${data.data[i].qty <= 0 ? 'c-not-allowed' : '' }" data-variation_id="${data.data[i].variation_id}" data-product_variation_combination_id="${data.data[i].product_variation_combination_id}">
                                 <div class="absolute-full bg-dark opacity-50">

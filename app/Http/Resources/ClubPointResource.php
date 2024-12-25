@@ -20,7 +20,7 @@ class ClubPointResource extends JsonResource
             'points' => $this->points,
             'convert_status' => (int) $this->convert_status,
             'created_at' => date('d-m-Y', strtotime($this->created_at)),
-            'order_code' =>$this->combined_order?->code,
+            'order_code' => $this->combined_order ? $this->combined_order->code : null,
         ];
     } 
 }

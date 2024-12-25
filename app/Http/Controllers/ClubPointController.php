@@ -138,4 +138,35 @@ class ClubPointController extends Controller
             return 0;
         }
     }
+
+    public function convertPointIntoWallet(Request $request)
+    {
+        $club_point = ClubPoint::findOrFail($request->id);
+
+        if ($club_point->convert_status == 0) {
+            $wallet = new Wallet;
+            $wallet->user_id = Auth::user()->id;
+            $wallet->amount = floatval($club_point->points / get_setting('club_point_convert_rate'));
+            $wallet->payment_method = 'Club Point Converted';
+            $wallet->payment_details = 'Club Point Converted';
+            $wallet->save();
+
+            $user = Auth::user();
+            $shop = $user->shop;
+            $shop->current_balance = $shop->current_balance + floatval($club_point->points / get_setting('club_point_convert_rate'));
+            $shop->save();
+
+            $club_point->convert_status = 1;
+
+            if ($club_point->save()) {
+                flash(translate('Points converted successfully'))->success();
+            } else {
+                flash(translate('Failed to convert points'))->error();
+            }
+        } else {
+            flash(translate('Points already converted'))->error();
+        }
+
+        return redirect()->route('seller.payouts.request');
+    }
 }

@@ -18,6 +18,7 @@ class PosProductCollection extends ResourceCollection
                 return [
                     'id' => $data->id,
                     'name' => $data->name,
+                    'earn_point' => $data->earn_point,
                     'thumbnail_image' => ($data->thumbnail_img != null)  ? uploaded_asset($data->thumbnail_img) : uploaded_asset($data->stock_image),
 
                     'base_price' => $data->product_variation_combination_id ? single_price(variation_price($product_variation_combination->variation->product, $product_variation_combination->variation)) : single_price(variation_price($data->variations[0]->product, $data->variations[0])),

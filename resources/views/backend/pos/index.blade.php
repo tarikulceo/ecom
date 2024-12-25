@@ -464,12 +464,15 @@
                             </div>
                             <div class="card-body p-2 p-xl-3">
                                 <div class="text-truncate fw-600 fs-14 mb-2">${data.data[i].name}</div>
+                                
+                                <div class="text-truncate fw-600 fs-14 mb-2">{{ translate('Points:') }} ${data.data[i].earn_point ? data.data[i].earn_point : 0}</div>
+                                
                                 <div class="">
                                     ${data.data[i].price != data.data[i].base_price
                                         ? `<del class="mr-2 ml-0">${data.data[i].base_price}</del><span>${data.data[i].price}</span>`
                                         : `<span>${data.data[i].base_price}</span>`
                                     }
-                                </div>
+                               
                             </div>
                             <div class="add-plus absolute-full rounded overflow-hidden hov-box ${data.data[i].qty <= 0 ? 'c-not-allowed' : '' }" data-variation_id="${data.data[i].variation_id}" data-product_variation_combination_id="${data.data[i].product_variation_combination_id}">
                                 <div class="absolute-full bg-dark opacity-50">
